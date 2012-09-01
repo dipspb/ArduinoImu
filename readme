@@ -1,0 +1,17 @@
+9 dimensions of freedom IMU
+
+This project connects to 9DOF module from www.geeetech.com (also known as Razor 
+9DOF), this module can be flashed with Arduino tool, because it has also 
+some atmel microcontroller incorporated. For visualization of informations from
+3 axis accelerometer, gyroscope and magnetometer, I decided to use html+javascript.
+This time I wanted nice graphical representation of device position/alignment,
+so I used the WebGL technology for the first time.
+
+For interfacing serial device to web browser, a proxy utility is necessary,
+proxy.cpp can be compiled in visual studio as terminal application.
+
+Unfortunatelly my 9DOF module is broken and the ADXL345 accelerometer always
+returns value 511 for Z-axis, I tried to fix it by calculating this accelration
+with Pytaghoras equation, but this workaround is far from perfect.
+
+See the "9dof.png" for reference.
