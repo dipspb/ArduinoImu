@@ -10,8 +10,4 @@ so I used the WebGL technology for the first time.
 For interfacing serial device to web browser, a proxy utility is necessary,
 proxy.cpp can be compiled in visual studio as terminal application.
 
-Unfortunatelly my 9DOF module is broken and the ADXL345 accelerometer always
-returns value 511 for Z-axis, I tried to fix it by calculating this accelration
-with Pytaghoras equation, but this workaround is far from perfect.
-
 See the "9dof.png" for reference.
