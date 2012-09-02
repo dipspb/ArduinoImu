@@ -1,8 +1,12 @@
+// nocache.cpp : Defines the entry point for the console application.
+//
 
 #include "stdafx.h"
 #include <crtdbg.h>
 #include <string.h>
 #include "WebSocket.h"
+#include <vector>
+using namespace std;
 
 #define _ASSERT_VALID(e) { if ( !(e) ) _ASSERT(0); }
 
@@ -10,25 +14,29 @@ bool bRunning = true;
 
 CWebSockets m_ws;
 volatile int nRequest = 0;
-CHAR sendmsg[1024] = {0};
+//CHAR sendmsg[1024] = {0};
+list<string> lstSend;
 HANDLE hFile = NULL;
+CRITICAL_SECTION m_cs;
 
 BOOL Do(HANDLE hFile)
 {
 	char buf[128];
 	DWORD wr;
 
-	if ( sendmsg[0] != 0 )
+	EnterCriticalSection(&m_cs);
+	while ( !lstSend.empty() )
 	{
-		//printf("w");
-		if ( !WriteFile( hFile, sendmsg, strlen(sendmsg), &wr, NULL ) ||
-			wr != strlen(sendmsg) )
+		string& str = lstSend.back();
+		if ( !WriteFile( hFile, str.c_str(), str.length(), &wr, NULL ) ||
+			wr != str.length() )
 		{
 			printf("Write error, %d\n", GetLastError());
 		}
-		//printf("W");
-		sendmsg[0] = 0;
+		lstSend.pop_back();
 	}
+	LeaveCriticalSection(&m_cs);
+
 	DWORD rd;
 	//printf("r");
 	if( !ReadFile(hFile, buf, 127, &rd, NULL ))
@@ -61,14 +69,14 @@ BOOL CtrlHandler( DWORD fdwCtrlType )
 
 void listener( UCHAR* pstr )
 {
-	if ( sendmsg[0] != 0 )
+	if ( pstr )
 	{
-		printf("Wait, previous buffer not sent yet!");
-		return;
+		EnterCriticalSection(&m_cs);
+		lstSend.push_front( string( (char*)pstr) );
+		LeaveCriticalSection(&m_cs);
 	}
-	strcpy( (char*)sendmsg+1, (char*)pstr+1 );
-	sendmsg[0] = pstr[0];
 }
+
 void InitSerial( HANDLE hComm )
 {
 	DCB dcb;
@@ -137,6 +145,9 @@ int main(int argc, CHAR* argv[])
 {
 	SetConsoleCtrlHandler( (PHANDLER_ROUTINE) CtrlHandler, TRUE );
 	m_ws.SetListener( listener );
+	
+	//Initilize the critical section
+	InitializeCriticalSection(&m_cs);
 
 	hFile = CreateFileA( "COM1:" , GENERIC_READ | GENERIC_WRITE, 0, NULL,
 			     OPEN_EXISTING, 0, NULL);

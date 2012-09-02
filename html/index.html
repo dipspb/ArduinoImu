@@ -37,32 +37,14 @@ Errors:
 <input type="button" value="#oe0" onClick="WSocket.Send(this.value)">
 <input type="button" value="#oe1" onClick="WSocket.Send(this.value)">
 
-<!--
 <table>
-<tr><td></td><td class="heading">X</td><td class="heading">Y</td><td class="heading">Z</td><td></td></tr>
-<tr><td>Acc</td>                                                                           
-  <td><input class="minval" type="text" id="axmin"><input class="rawval" type="text" id="ax"><input class="maxval" type="text" id="axmax"></td>
-  <td><input class="minval" type="text" id="aymin"><input class="rawval" type="text" id="ay"><input class="maxval" type="text" id="aymax"></td>
-  <td><input class="minval" type="text" id="azmin"><input class="rawval" type="text" id="az"><input class="maxval" type="text" id="azmax"></td>
-  <td><input class="resetrange" type="button" id="reseta" value="Reset"></td>
+<tr><td></td><td class="heading">Acc (G)</td><td class="heading">Mag (Ga)</td><td class="heading">Gyro (deg/s)</td><td></td>
+ <td rowspan="4">
+   <input type="radio" name="values" value="raw" checked>Raw<br>
+   <input type="radio" name="values" value="units">Real units<br>
+   <input type="radio" name="values" value="average">Average<br>
+ </td>
 </tr>
-<tr><td>Mag</td>                                                                           
-  <td><input class="minval" type="text" id="mxmin"><input class="rawval" type="text" id="mx"><input class="maxval" type="text" id="mxmax"></td>
-	<td><input class="minval" type="text" id="mymin"><input class="rawval" type="text" id="my"><input class="maxval" type="text" id="mymax"></td>
-  <td><input class="minval" type="text" id="mzmin"><input class="rawval" type="text" id="mz"><input class="maxval" type="text" id="mzmax"></td>
-  <td><input class="resetrange" type="button" id="resetm" value="Reset"></td>
-</tr>
-<tr><td>Gyro</td>
-  <td><input class="minval" type="text" id="gxmin"><input class="rawval" type="text" id="gx"><input class="maxval" type="text" id="gxmax"></td>
-  <td><input class="minval" type="text" id="gymin"><input class="rawval" type="text" id="gy"><input class="maxval" type="text" id="gymax"></td>
-  <td><input class="minval" type="text" id="gzmin"><input class="rawval" type="text" id="gz"><input class="maxval" type="text" id="gzmax"></td>
-  <td><input class="resetrange" type="button" id="resetg" value="Reset"></td>
-</tr>
-</table>
--->
-
-<table>
-<tr><td></td><td class="heading">Acc</td><td class="heading">Mag</td><td class="heading">Gyro</td><td></td></tr>
 <tr><td>X</td>                                                                           
   <td class="bga"><input class="minval" type="text" id="axmin"><input class="rawval" type="text" id="ax"><input class="maxval" type="text" id="axmax"></td>
   <td class="bgm"><input class="minval" type="text" id="mxmin"><input class="rawval" type="text" id="mx"><input class="maxval" type="text" id="mxmax"></td>
@@ -88,9 +70,50 @@ Errors:
 
 <canvas id="canvas" width="400" height="400" style="border:solid 1px #000000;"></canvas>
 <canvas id="3d" width="400" height="400" style="border:solid 1px #000000;"></canvas>
+
+<textarea cols="80" rows="10" id="ta">
+Wire = {onData:function() {alert(arguments.length);}}
+function cmd(str) { WSocket.Send( ":" + str + "\n" ); };
+
+//WSocket.Send("#o0");
+accRead();
+// accCalib({x:0, y:0, z:0}); // reset calibration
+accCalib({x:-12, y:-180, z:1156});
+accCalibApp = {xo:0, yo:0, zo:-374, xm:1/1.2, ym:1/1.2, zm:1};
+                          
+
+// helpers
+function accRead()
+{
+  cmd("Wire.select(0x53);");  
+  cmd("Wire.write(0x32);");
+  cmd("Wire.read(6);");
+}
+function accCalib(nums)
+{
+  cmd("Wire.select(0x53);");
+  cmd("Wire.write(0x1f, " + accClamp(nums.x) + ");");
+  cmd("Wire.write(0x1e, " + accClamp(nums.y) + ");");
+  cmd("Wire.write(0x20, " + accClamp(nums.z) + ");");
+}
+function accClamp(num)
+{
+  num = - Math.floor(num/4); 
+  if (num < -128) num = -128; 
+  if (num > 127) num = 127;
+  if (num < 0) num += 256; // 8 bit signed
+  return num;
+}
+</textarea><bt>
+<input type="button" value="exec" onClick="eval($('ta').value)"><br>
 <pre id="txt">Result...</div>
 
     <script type="text/javascript">
+
+function getParamNames(func) {
+    var funStr = func.toString();
+    return funStr.slice(funStr.indexOf('(')+1, funStr.indexOf(')')).match(/([^\s,]+)/g);
+}
 				String.prototype.trim=function(){return this.replace(/^\s\s*/, '').replace(/\s\s*$/, '');};
 
 				var SocketClass = function()
@@ -162,12 +185,42 @@ Errors:
 					init3d();
         };
 
+   function getCheckedRadio() {
+     var radioButtons = document.getElementsByName("values");
+     for (var x = 0; x < radioButtons.length; x ++) {
+       if (radioButtons[x].checked) {
+         return radioButtons[x].value;
+       }
+     }
+   }
+function getCheckedValue(radioObj) {
+	if(!radioObj)
+		return "";
+	var radioLength = radioObj.length;
+	if(radioLength == undefined)
+		if(radioObj.checked)
+			return radioObj.value;
+		else
+			return "";
+	for(var i = 0; i < radioLength; i++) {
+		if(radioObj[i].checked) {
+			return radioObj[i].value;
+		}
+	}
+	return "";
+}
+
+var accCalibApp = {xo:0, yo:0, zo:-374, xm:1/1.2, ym:1/1.2, zm:1/1.0};
+var magn_ellipsoid_center = [121.561, 31.9505, -12.0965];
+var magn_ellipsoid_transform = [[0.977825, -0.00484788, -0.0275912], [-0.00484788, 0.936079, 0.0208331], [-0.0275912, 0.0208331, 0.954189]];
+var gyrCalib = {x:22, y:-11, z:65};
 
 last = [];
-dataG = {x:{minimum:0, maximum:0, raw:0}, y:{minimum:0, maximum:0, raw:0}, z:{minimum:0, maximum:0, raw:0}};
-dataM = {x:{minimum:0, maximum:0, raw:0}, y:{minimum:0, maximum:0, raw:0}, z:{minimum:0, maximum:0, raw:0}};
-dataA = {x:{minimum:0, maximum:0, raw:0}, y:{minimum:0, maximum:0, raw:0}, z:{minimum:0, maximum:0, raw:0}};
+dataG = {x:{minimum:0, maximum:0, raw:0, average:-999}, y:{minimum:0, maximum:0, raw:0, average:-999}, z:{minimum:0, maximum:0, raw:0, average:-999}};
+dataM = {x:{minimum:0, maximum:0, raw:0, average:-999}, y:{minimum:0, maximum:0, raw:0, average:-999}, z:{minimum:0, maximum:0, raw:0, average:-999}};
+dataA = {x:{minimum:0, maximum:0, raw:0, average:-999}, y:{minimum:0, maximum:0, raw:0, average:-999}, z:{minimum:0, maximum:0, raw:0, average:-999}};
 dataC = []; // corrected yaw pitch roll
+datacount = 0;
 
 function usevalues(obj, arr)
 {
@@ -199,6 +252,14 @@ function usevalues(obj, arr)
 	obj.z.raw = z;
 }
 
+function Matrix_Vector_Multiply(a, b)
+{
+  var out = [];
+  for(var x = 0; x < 3; x++)
+    out[x] = a[x][0] * b[0] + a[x][1] * b[1] + a[x][2] * b[2];
+  return out;
+}
+
 function OnLine(l)
 {
   last[3] = last[2];
@@ -206,32 +267,45 @@ function OnLine(l)
   last[1] = last[0];
   last[0] = l;
 
+	if ( l.indexOf(");") != -1 )
+	{
+		setTimeout(l, 0);
+		return;
+	}
+
   var p;
   if ( (p=l.indexOf("#G-")) > -1 )
+	{
   	usevalues(dataG, l.substr(p+5).split(","));
+		dataG.x.raw += gyrCalib.x;
+		dataG.y.raw += gyrCalib.y;
+		dataG.z.raw += gyrCalib.z;
+	}
   if ( (p=l.indexOf("#M-")) > -1 )
+	{
   	usevalues(dataM, l.substr(p+5).split(","));
+		dataM.x.raw -= magn_ellipsoid_center[0];
+		dataM.y.raw -= magn_ellipsoid_center[1];
+		dataM.z.raw -= magn_ellipsoid_center[2];
+    var out = Matrix_Vector_Multiply(magn_ellipsoid_transform, [dataM.x.raw, dataM.y.raw, dataM.z.raw]);
+		dataM.x.raw = out[0];
+		dataM.y.raw = out[1];
+		dataM.z.raw = out[2];
+	}
   if ( (p=l.indexOf("#A-")) > -1 )
 	{
   	usevalues(dataA, l.substr(p+5).split(","));
-
-		// workaround for damaged ADXL345
-		//x : -337 .. 340
-		range = {x:[-337, 340], y:[-520, 170]};
-
-		dataA.x.raw = (dataA.x.raw - range.x[0]) / (range.x[1]-range.x[0]) * 2 * 330 - 330;
-		dataA.y.raw = (dataA.y.raw - range.y[0]) / (range.y[1]-range.y[0]) * 2 * 330 - 330;
-//		dataA.y.raw += 180;
-		dataA.z.raw = Math.sqrt(330*330-(dataA.x.raw*dataA.x.raw + dataA.y.raw*dataA.y.raw));
-		if (isNaN(dataA.z.raw))
-			dataA.z.raw = 0;
-		if (dataM.z.raw < 0)
-			dataA.z.raw *= -1;
-		
+		dataA.x.raw += accCalibApp.xo;
+		dataA.y.raw += accCalibApp.yo;
+		dataA.z.raw += accCalibApp.zo;
+		dataA.x.raw *= accCalibApp.xm;
+		dataA.y.raw *= accCalibApp.ym;
+		dataA.z.raw *= accCalibApp.zm;
 	}
 
   if ( (p=l.indexOf("YPR")) > -1 )
   	dataC = l.substr(p+5).split(",");
+  datacount++;
 }
 
   var c = document.getElementById("canvas");
@@ -268,21 +342,73 @@ function Vector_Cross_Product(v1, v2)
 	return out;
 }
 
+function valueAcc(mode, value)
+{
+  switch (mode)
+	{
+		case "raw": return value.raw.toFixed(1);
+		case "units": return (value.raw*16/(1<<12)).toFixed(2); // +-16g 13 bit mode
+		case "average": return value.average.toFixed(1);
+	}
+}
+function valueMag(mode, value)
+{
+  switch (mode)
+	{
+		case "raw": return value.raw.toFixed(1);
+		case "units": return (value.raw/1090).toFixed(3); // 1090LSB = 1 gauss 
+		case "average": return value.average.toFixed(1);
+	}
+}
+function valueGyr(mode, value)
+{
+  switch (mode)
+	{
+		case "raw": return value.raw.toFixed(1);
+		case "units": return (value.raw/14.375).toFixed(1); //14.375 LSB = (1 deg/s)
+		case "average": return value.average.toFixed(1);
+	}
+}
+
+function averager(v)
+{
+  if (v.average == -999)
+	{
+		v.average = v.raw;
+		return;
+	}
+  var p = 0.01;
+  v.average = v.raw*p + v.average*(1-p);
+}
+
 function update()
 {
 	var minmax = true;
+	var dispmode = getCheckedRadio();
 
-  $("ax").value = dataA.x.raw;
-  $("ay").value = dataA.y.raw;
-  $("az").value = dataA.z.raw;
+	averager(dataA.x);
+	averager(dataA.y);
+	averager(dataA.z);
 
-  $("gx").value = dataG.x.raw;
-  $("gy").value = dataG.y.raw;
-  $("gz").value = dataG.z.raw;
+	averager(dataM.x);
+	averager(dataM.y);
+	averager(dataM.z);
 
-  $("mx").value = dataM.x.raw;
-  $("my").value = dataM.y.raw;
-  $("mz").value = dataM.z.raw;
+	averager(dataG.x);
+	averager(dataG.y);
+	averager(dataG.z);
+
+  $("ax").value = valueAcc(dispmode, dataA.x);
+  $("ay").value = valueAcc(dispmode, dataA.y);
+  $("az").value = valueAcc(dispmode, dataA.z);
+
+  $("gx").value = valueGyr(dispmode, dataG.x);
+  $("gy").value = valueGyr(dispmode, dataG.y);
+  $("gz").value = valueGyr(dispmode, dataG.z);
+
+  $("mx").value = valueMag(dispmode, dataM.x);
+  $("my").value = valueMag(dispmode, dataM.y);
+  $("mz").value = valueMag(dispmode, dataM.z);
 
   if ( minmax )
 	{
@@ -330,49 +456,259 @@ function update()
   bar(320, 200, 330, 200-dataG.y.raw*mg, "128, 128, 255");
   bar(340, 200, 350, 200-dataG.z.raw*mg, "128, 128, 255");
 
+  calculation();
 
-	var accel = [dataA.x.raw, dataA.y.raw, dataA.z.raw];
-	var magnetom = [dataM.x.raw, dataM.y.raw, dataM.z.raw];
-	var xAxis = [1, 0, 0];
-  pitch = -Math.atan2(accel[0], Math.sqrt(accel[1] * accel[1] + accel[2] * accel[2]));
-	
-  // GET ROLL
-  // Compensate pitch of gravity vector 
-  temp1 = Vector_Cross_Product(accel, xAxis);
-  temp2 = Vector_Cross_Product(xAxis, temp1);
-
-  roll = Math.atan2(temp2[1], temp2[2]);
-
-  cos_roll = Math.cos(roll);
-  sin_roll = Math.sin(roll);
-  cos_pitch = Math.cos(pitch);
-  sin_pitch = Math.sin(pitch);
-
-  mag_x = magnetom[0] * cos_pitch + magnetom[1] * sin_roll * sin_pitch + magnetom[2] * cos_roll * sin_pitch;
-  // Tilt compensated magnetic field Y
-  mag_y = magnetom[1] * cos_roll - magnetom[2] * sin_roll;
-    // Magnetic Heading
-  yaw = Math.atan2(-mag_y, mag_x);
-
-  last[6] = "yaw="+yaw.toFixed(2)+ " pitch="+pitch.toFixed(2)+" roll="+roll.toFixed(2);
+//  last[6] = "yaw="+yaw.toFixed(2)+ " pitch="+pitch.toFixed(2)+" roll="+roll.toFixed(2);
 
 ctx.lineWidth = 5;
 ctx.strokeColor = "#ff0000";
 ctx.beginPath();
 ctx.moveTo(350,350);
-ctx.lineTo(350+Math.cos(yaw)*50,350+Math.sin(yaw)*50);
+ctx.lineTo(350+Math.sin(yaw)*50,350-Math.cos(yaw)*50);
 ctx.stroke();
 
 ctx.beginPath();
-ctx.lineTo(350+Math.cos(yaw+0.1)*40,350+Math.sin(yaw+0.1)*40);
-ctx.lineTo(350+Math.cos(yaw)*50,350+Math.sin(yaw)*50);
-ctx.lineTo(350+Math.cos(yaw-0.1)*40,350+Math.sin(yaw-0.1)*40);
+ctx.lineTo(350+Math.sin(yaw+0.1)*40,350-Math.cos(yaw+0.1)*40);
+ctx.lineTo(350+Math.sin(yaw)*50,350-Math.cos(yaw)*50);
+ctx.lineTo(350+Math.sin(yaw-0.1)*40,350-Math.cos(yaw-0.1)*40);
 ctx.stroke();
-//currentAngle = roll*180/Math.PI;
 draw3d();
-  document.getElementById("txt").innerHTML = last.join(""); 
+document.getElementById("txt").innerHTML = last.join(""); 
 
 }
+
+
+calibrated = 0;
+
+var accel, magnetom, gyro;
+var yaw, pitch, roll;
+var MAG_Heading;
+
+function calculation()
+{
+	accel = [dataA.x.raw, dataA.y.raw, dataA.z.raw];
+	magnetom = [dataM.x.raw, dataM.y.raw, dataM.z.raw];
+	gyro = [dataG.x.raw, dataG.y.raw, dataG.z.raw];
+	var xAxis = [1, 0, 0];
+
+	if ( datacount > 6 && !calibrated)
+	{
+		calibrated = 1;
+	  pitch = -Math.atan2(accel[0], Math.sqrt(accel[1] * accel[1] + accel[2] * accel[2]));
+	
+	  // GET ROLL
+	  // Compensate pitch of gravity vector 
+	  temp1 = Vector_Cross_Product(accel, xAxis);
+	  temp2 = Vector_Cross_Product(xAxis, temp1);
+
+	  roll = Math.atan2(temp2[1], temp2[2]);
+	  Compass_Heading();
+		yaw = MAG_Heading;
+		return;
+	} 
+	if (calibrated)
+	{	
+      Compass_Heading(); // Calculate magnetic heading
+      Matrix_update();
+      Normalize();
+      Drift_correction();
+      Euler_angles();
+	}
+}
+
+function Compass_Heading()
+{
+	  cos_roll = Math.cos(roll);
+	  sin_roll = Math.sin(roll);
+	  cos_pitch = Math.cos(pitch);
+	  sin_pitch = Math.sin(pitch);
+
+	  mag_x = magnetom[0] * cos_pitch + magnetom[1] * sin_roll * sin_pitch + magnetom[2] * cos_roll * sin_pitch;
+	  // Tilt compensated magnetic field Y
+	  mag_y = magnetom[1] * cos_roll - magnetom[2] * sin_roll;
+    // Magnetic Heading
+	  MAG_Heading = Math.atan2(-mag_y, mag_x);
+
+}
+function Vector_Add(v1, v2)
+{
+ var out = [];
+  for(var c = 0; c < 3; c++)
+  {
+    out[c] = v1[c] + v2[c];
+  }
+  return out;
+}
+
+function Matrix_Multiply(a, b)
+{
+  var out = [[],[],[]];
+  for(var x = 0; x < 3; x++)  // rows
+  {
+    for(var y = 0; y < 3; y++)  // columns
+    {
+      out[x][y] = a[x][0] * b[0][y] + a[x][1] * b[1][y] + a[x][2] * b[2][y];
+    }
+  }
+  return out;
+}
+function Vector_Dot_Product(v1, v2)
+{
+  var result = 0;
+  
+  for(var c = 0; c < 3; c++)
+  {
+    result += v1[c] * v2[c];
+  }
+  
+  return result; 
+}
+function Vector_Scale(v, scale)
+{
+  var out=[];
+  for(var c = 0; c < 3; c++)
+  {
+    out[c] = v[c] * scale; 
+  }
+  return out;
+}
+
+
+var Omega_I = [0, 0, 0];
+var Omega_P = [0, 0, 0];
+//var DCM_Matrix = [[], [], []];
+var DCM_Matrix = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+
+var G_Dt = 1/20;
+function Matrix_update()
+{
+  var scale = 0.06957*Math.PI/180;
+	Gyro_Vector = [ gyro[0]*scale, gyro[1]*scale, gyro[2]*scale ];
+  var Accel_Vector = [];
+  Accel_Vector[0]=accel[0];
+  Accel_Vector[1]=accel[1];
+  Accel_Vector[2]=accel[2];
+    
+  Omega = Vector_Add(Gyro_Vector, Omega_I);  //adding proportional term
+  Omega_Vector = Vector_Add(Omega, Omega_P); //adding Integrator term
+  var Update_Matrix = [[], [], []];
+  
+  Update_Matrix[0][0]=0;
+  Update_Matrix[0][1]=-G_Dt*Omega_Vector[2];//-z
+  Update_Matrix[0][2]=G_Dt*Omega_Vector[1];//y
+  Update_Matrix[1][0]=G_Dt*Omega_Vector[2];//z
+  Update_Matrix[1][1]=0;
+  Update_Matrix[1][2]=-G_Dt*Omega_Vector[0];//-x
+  Update_Matrix[2][0]=-G_Dt*Omega_Vector[1];//-y
+  Update_Matrix[2][1]=G_Dt*Omega_Vector[0];//x
+  Update_Matrix[2][2]=0;
+
+  var Temporary_Matrix=Matrix_Multiply(DCM_Matrix,Update_Matrix); //a*b=c
+
+  for(var x=0; x<3; x++) //Matrix Addition (update)
+  {
+    for(var y=0; y<3; y++)
+    {
+      DCM_Matrix[x][y]+=Temporary_Matrix[x][y];
+    } 
+  }
+}
+function Normalize()
+{
+  var error=0;
+  var temporary= [[],[],[]];
+  var renorm=0;
+  
+  error= -Vector_Dot_Product(DCM_Matrix[0],DCM_Matrix[1])*.5; //eq.19
+
+  temporary[0] =  Vector_Scale(DCM_Matrix[1], error); //eq.19
+  temporary[1] = Vector_Scale( DCM_Matrix[0], error); //eq.19
+  
+  temporary[0] = Vector_Add(temporary[0], DCM_Matrix[0]);//eq.19
+  temporary[1] = Vector_Add(temporary[1], DCM_Matrix[1]);//eq.19
+  
+  temporary[2] = Vector_Cross_Product(temporary[0],temporary[1]); // c= a x b //eq.20
+  
+  renorm= .5 *(3 - Vector_Dot_Product(temporary[0],temporary[0])); //eq.21
+  DCM_Matrix[0] = Vector_Scale(temporary[0], renorm);
+  
+  renorm= .5 *(3 - Vector_Dot_Product(temporary[1],temporary[1])); //eq.21
+  DCM_Matrix[1] = Vector_Scale(temporary[1], renorm);
+  
+  renorm= .5 *(3 - Vector_Dot_Product(temporary[2],temporary[2])); //eq.21
+  DCM_Matrix[2] = Vector_Scale(temporary[2], renorm);
+}
+
+function Euler_angles()
+{
+  pitch = -Math.asin(DCM_Matrix[2][0]);
+  roll = Math.atan2(DCM_Matrix[2][1],DCM_Matrix[2][2]);
+  yaw = Math.atan2(DCM_Matrix[1][0],DCM_Matrix[0][0]);
+}
+
+var Scaled_Omega_I = [];
+var Scaled_Omega_P = [];
+var GRAVITY = 300;
+var Kp_ROLLPITCH = 0.02;
+var Ki_ROLLPITCH = 0.00002;
+var Kp_YAW = 1.2;
+var Ki_YAW = 0.00002;
+
+/*
+#define Kp_ROLLPITCH 0.02f
+#define Ki_ROLLPITCH 0.00002f
+#define Kp_YAW 1.2f
+#define Ki_YAW 0.00002f
+
+*/
+function constrain(v, b, t)
+{
+  if (v<b) return b;
+  if (v>t) return t;
+  return v;
+}
+function Drift_correction()
+{
+  var mag_heading_x;
+  var mag_heading_y;
+  var errorCourse;
+  //Compensation the Roll, Pitch and Yaw drift. 
+  var Accel_magnitude;
+  var Accel_weight;
+  
+  var Accel_Vector = accel;
+  //*****Roll and Pitch***************
+
+
+  // Calculate the magnitude of the accelerometer vector
+  Accel_magnitude = Math.sqrt(Accel_Vector[0]*Accel_Vector[0] + Accel_Vector[1]*Accel_Vector[1] + Accel_Vector[2]*Accel_Vector[2]);
+  Accel_magnitude = Accel_magnitude / GRAVITY; // Scale to gravity.
+  // Dynamic weighting of accelerometer info (reliability filter)
+  // Weight for accelerometer info (<0.5G = 0.0, 1G = 1.0 , >1.5G = 0.0)
+  Accel_weight = constrain(1 - 2*Math.abs(1 - Accel_magnitude),0,1);  //  
+
+  errorRollPitch = Vector_Cross_Product(Accel_Vector,DCM_Matrix[2]); //adjust the ground of reference
+  Omega_P = Vector_Scale(errorRollPitch,Kp_ROLLPITCH*Accel_weight);
+  
+  Scaled_Omega_I = Vector_Scale(errorRollPitch,Ki_ROLLPITCH*Accel_weight);
+  Omega_I = Vector_Add(Omega_I,Scaled_Omega_I);     
+  
+  //*****YAW***************
+  // We make the gyro YAW drift correction based on compass magnetic heading
+ 
+  mag_heading_x = Math.cos(MAG_Heading);
+  mag_heading_y = Math.sin(MAG_Heading);
+  errorCourse=(DCM_Matrix[0][0]*mag_heading_y) - (DCM_Matrix[1][0]*mag_heading_x);  //Calculating YAW error
+  errorYaw = Vector_Scale(DCM_Matrix[2],errorCourse); //Applys the yaw correction to the XYZ rotation of the aircraft, depeding the position.
+  
+  Scaled_Omega_P = Vector_Scale(errorYaw,Kp_YAW);//.01proportional of YAW.
+  Omega_P = Vector_Add(Omega_P,Scaled_Omega_P);//Adding  Proportional.
+  
+  Scaled_Omega_I = Vector_Scale(errorYaw,Ki_YAW);//.00001Integrator
+  Omega_I = Vector_Add(Omega_I,Scaled_Omega_I);//adding integrator to the Omega_I
+}
+
+
     </script>
 
 
@@ -539,9 +875,6 @@ function makeMyBox(ctx)
     function reshape(gl)
     {
         var canvas = document.getElementById('3d');
-//        if (canvas.width == width && canvas.height == height)
-//            return;
-
         width = canvas.width;
         height = canvas.height;
 
@@ -557,20 +890,13 @@ function makeMyBox(ctx)
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
         gl.mvMatrix.makeIdentity();
-//				gl.mvMatrix.translate(0, 0, -10);
-//        gl.mvMatrix.rotate(20, 1,0,0);
-//				var sc = 2;
-//        gl.mvMatrix.scale(1*sc, 0.1*sc, 1*sc);
-//        gl.mvMatrix.rotate(currentAngle, 0,1,0);
-        gl.mvMatrix.rotate(yaw*180/Math.PI, 0,-1,0);
+
+        gl.mvMatrix.rotate(20, 1,0,0);
+
+        gl.mvMatrix.rotate(yaw*180/Math.PI+270, 0,-1,0);
         gl.mvMatrix.rotate(pitch*180/Math.PI, 0,0,1);
         gl.mvMatrix.rotate(roll*180/Math.PI, 1,0,0);
 
-//  rotateX(-radians(pitch));
-//  rotateY(-radians(yaw - yawOffset));
-//  rotateZ(radians(roll)); 
-
-//        gl.mvMatrix.rotate(yaw*180/Math.PI, 0,1,0);
 
         gl.normalMatrix.load(gl.mvMatrix);
         gl.normalMatrix.invert();

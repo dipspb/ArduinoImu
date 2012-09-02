@@ -8,7 +8,11 @@
 #pragma comment(lib, "Ws2_32.lib")
 using namespace std;
 #pragma push_macro("printf")
+#ifdef _DEBUG
 #define printf Print
+#else
+#define printf(...)
+#endif
 
 void Print(LPSTR pFormat, ...)
 {
@@ -464,6 +468,8 @@ private:
 		{
 			unsigned char msg[BUFLEN];
 			unsigned char *pmsg = msg;
+			int nWriteBase = 0;
+
 			int nRecv = recv(s, (char*)msg, BUFLEN, 0);
 			if ( nRecv <= 0 )
 				return -1;
@@ -472,6 +478,11 @@ private:
 				_ASSERT(0);
 				return 0;
 			}	
+
+			if ( nRecv > BUFLEN-10 )
+			{
+				printf("Warning, too big buffer received! Next frame will be broken\n");
+			}
 			
 			if ( *pmsg == 0x88 )
 			{
@@ -479,63 +490,69 @@ private:
 				return -1;
 			}
 
-			if ( *pmsg != 0x81 ) 
-			{
-				// buffer mismatch
-				printf("Buffer mismatch, ignored %d bytes\n", nRecv);
-				return 0;
-			}
+			do {
 
-			_ASSERT(*pmsg == 0x81); // final text frame
-			pmsg++;
-			BOOL bMask = *pmsg & 0x80;
-			DWORD nLen = *pmsg & 0x7f;
-			pmsg++;
+				if ( *pmsg != 0x81 ) 
+				{
+					// buffer mismatch
+					printf("Buffer mismatch, ignored %d bytes\n", nRecv);
+					return 0;
+				}
 
-			if ( nLen == 126 )
-			{
-				unsigned char bHi = *pmsg++;
-				unsigned char bLow = *pmsg++;
-				nLen = (bHi<<8) | bLow;
-			} else if ( nLen == 127 )
-			{
-				unsigned char bA = *pmsg++;
-				unsigned char bB = *pmsg++;
-				unsigned char bC = *pmsg++;
-				unsigned char bD = *pmsg++;
-				nLen = bA;
-				nLen <<= 8;
-				nLen |= bB;
-				nLen <<= 8;
-				nLen |= bC;
-				nLen <<= 8;
-				nLen |= bD;
-			}
+				_ASSERT(*pmsg == 0x81); // final text frame
+				pmsg++;
+				BOOL bMask = *pmsg & 0x80;
+				DWORD nLen = *pmsg & 0x7f;
+				pmsg++;
 
-			unsigned char aMask[4] = {0};
+				if ( nLen == 126 )
+				{
+					unsigned char bHi = *pmsg++;
+					unsigned char bLow = *pmsg++;
+					nLen = (bHi<<8) | bLow;
+				} else if ( nLen == 127 )
+				{
+					unsigned char bA = *pmsg++;
+					unsigned char bB = *pmsg++;
+					unsigned char bC = *pmsg++;
+					unsigned char bD = *pmsg++;
+					nLen = bA;
+					nLen <<= 8;
+					nLen |= bB;
+					nLen <<= 8;
+					nLen |= bC;
+					nLen <<= 8;
+					nLen |= bD;
+				}
+
+				unsigned char aMask[4] = {0};
 			
-			if ( bMask )
-			{
-				aMask[0] = *pmsg++;
-				aMask[1] = *pmsg++;
-				aMask[2] = *pmsg++;
-				aMask[3] = *pmsg++;
-			}
+				if ( bMask )
+				{
+					aMask[0] = *pmsg++;
+					aMask[1] = *pmsg++;
+					aMask[2] = *pmsg++;
+					aMask[3] = *pmsg++;
+				}
 
-			_ASSERT( (int)(pmsg-msg) <= (int)nRecv-(int)nLen );
-			if ( pmsg-msg != nRecv-nLen )
-			{
-				int nExtra = nRecv-nLen+(msg-pmsg);
-				printf("Ignored %d bytes from buffer\n", nExtra);
-			}
+				_ASSERT( (int)(pmsg-msg) <= (int)nRecv-(int)nLen );
+				if ( pmsg-msg != nRecv-nLen )
+				{
+					int nExtra = nRecv-nLen+(msg-pmsg);
+					printf("Continuing %d bytes\n", nExtra);
+				}
 
-			_ASSERT( (int)nLen < (int)buflen );
-			int i, n = min(buflen-1, (int)nLen);
-			for (i=0; i<n; i++)
-				buffer[i] = pmsg[i] ^ aMask[i&3];
-			buffer[i] = 0;
-			return i;
-
+				_ASSERT( (int)nLen+nWriteBase < (int)buflen );
+				int i, n = min(buflen-1-nWriteBase, (int)nLen);
+				if ( n != nLen )
+					printf("Buffer too small.\n");
+				for (i=0; i<n; i++)
+					buffer[nWriteBase+i] = pmsg[i] ^ aMask[i&3];
+				buffer[nWriteBase+i] = 0;
+				nWriteBase += n;
+				pmsg += n;
+			} while ( (int)(pmsg-msg) < nRecv );
+			return nWriteBase;
 		}
 		_ASSERT( nWebSocket == 0 );
 		return recv(s, buffer, buflen, 0);
@@ -585,6 +602,7 @@ private:
 			if ( received > 0 )
 			{
 				shared_buffer[received] = 0;
+				printf("received %d, len %d, '%s'\n", received, strlen(shared_buffer), shared_buffer);
 				//printf("server thread %x\tshared buffer: \"%s\"\n", GetCurrentThreadId(), shared_buffer);
 				if ( m_Listener )
 					m_Listener( (unsigned char*)shared_buffer );
